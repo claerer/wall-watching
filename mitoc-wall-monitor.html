@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MITOC Wall Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0d0f0e;
+    --surface: #141816;
+    --border: #1e2420;
+    --accent: #a8ff78;
+    --accent2: #78ffc8;
+    --warn: #ff784e;
+    --text: #e8ede9;
+    --muted: #5a6b5e;
+    --glow: rgba(168, 255, 120, 0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+    overflow-x: hidden;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .header-tag {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(28px, 6vw, 42px);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  h1 span {
+    color: var(--accent);
+  }
+
+  .subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* Status row */
+  .status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .status-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+  }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+
+  .dot.active {
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent), 0 0 16px rgba(168, 255, 120, 0.4);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .dot.changed {
+    background: var(--warn);
+    box-shadow: 0 0 8px var(--warn);
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* Toggle */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .toggle-label {
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .toggle-label small {
+    display: block;
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .toggle {
+    position: relative;
+    width: 52px;
+    height: 28px;
+    cursor: pointer;
+  }
+
+  .toggle input { opacity: 0; width: 0; height: 0; }
+
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    background: var(--border);
+    border-radius: 28px;
+    border: 1px solid #2a3230;
+    transition: all 0.3s;
+  }
+
+  .toggle-thumb {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 18px;
+    height: 18px;
+    background: var(--muted);
+    border-radius: 50%;
+    transition: all 0.3s;
+  }
+
+  .toggle input:checked ~ .toggle-track {
+    background: rgba(168, 255, 120, 0.12);
+    border-color: var(--accent);
+  }
+
+  .toggle input:checked ~ .toggle-thumb {
+    transform: translateX(24px);
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  /* Interval selector */
+  .interval-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .interval-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .interval-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .pill {
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .pill:hover { border-color: var(--accent); color: var(--accent); }
+  .pill.active {
+    background: rgba(168, 255, 120, 0.1);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Divider */
+  .divider {
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Log */
+  .log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .log-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+  }
+
+  .log-clear {
+    font-size: 10px;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    text-decoration: underline;
+    padding: 0;
+  }
+
+  .log-clear:hover { color: var(--warn); }
+
+  .log {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .log-entry {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+    line-height: 1.5;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .log-time {
+    color: var(--muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-size: 10px;
+  }
+
+  .log-msg { color: var(--text); }
+  .log-msg.ok { color: var(--muted); }
+  .log-msg.changed { color: var(--accent); font-weight: 500; }
+  .log-msg.error { color: var(--warn); }
+  .log-msg.info { color: var(--accent2); }
+
+  /* Last check */
+  .meta-row {
+    display: flex;
+    gap: 20px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .meta-row span b {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  /* Alert banner */
+  .alert-banner {
+    display: none;
+    background: rgba(255, 120, 78, 0.1);
+    border: 1px solid var(--warn);
+    border-radius: 10px;
+    padding: 16px 20px;
+    gap: 12px;
+    align-items: flex-start;
+    animation: fadeIn 0.4s ease;
+  }
+
+  .alert-banner.visible {
+    display: flex;
+  }
+
+  .alert-icon {
+    font-size: 20px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .alert-body { flex: 1; }
+  .alert-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--warn);
+    margin-bottom: 4px;
+  }
+  .alert-msg { font-size: 11px; color: var(--text); }
+
+  .alert-dismiss {
+    background: none;
+    border: 1px solid var(--warn);
+    color: var(--warn);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+  .alert-dismiss:hover { background: rgba(255,120,78,0.15); }
+
+  /* Notification permission */
+  .notif-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    background: rgba(120, 255, 200, 0.04);
+    border: 1px dashed rgba(120, 255, 200, 0.2);
+    border-radius: 8px;
+  }
+
+  .notif-text {
+    font-size: 11px;
+    color: var(--accent2);
+  }
+
+  .notif-text small {
+    display: block;
+    color: var(--muted);
+    font-size: 10px;
+    margin-top: 2px;
+  }
+
+  .btn-notif {
+    background: rgba(120, 255, 200, 0.1);
+    border: 1px solid var(--accent2);
+    color: var(--accent2);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 7px 14px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .btn-notif:hover { background: rgba(120, 255, 200, 0.2); }
+  .btn-notif:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  /* Footer */
+  .footer {
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .footer a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .footer a:hover { text-decoration: underline; }
+
+  /* Scan animation on card when active */
+  .card.scanning {
+    border-color: rgba(168, 255, 120, 0.3);
+    box-shadow: 0 0 0 1px rgba(168,255,120,0.05), 0 0 30px rgba(168,255,120,0.05);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div class="header-tag">MIT Outing Club</div>
+    <h1>Wall <span>Monitor</span></h1>
+    <div class="subtitle">Watches scripts.mit.edu/~mitoc/wall/ for any changes</div>
+  </div>
+
+  <!-- Change alert banner -->
+  <div class="alert-banner" id="alertBanner">
+    <div class="alert-icon">🧗</div>
+    <div class="alert-body">
+      <div class="alert-title">Wall page has changed!</div>
+      <div class="alert-msg" id="alertMsg">Something changed on the MITOC wall page.</div>
+      <button class="alert-dismiss" onclick="dismissAlert()">Dismiss & view page ↗</button>
+    </div>
+  </div>
+
+  <div class="card" id="mainCard">
+
+    <!-- Status -->
+    <div class="status-row">
+      <div class="status-label">Monitoring status</div>
+      <div class="status-badge">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">Idle</span>
+      </div>
+    </div>
+
+    <!-- Enable toggle -->
+    <div class="toggle-row">
+      <div class="toggle-label">
+        Enable monitoring
+        <small>Checks the wall page on the interval below</small>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="monitorToggle" onchange="toggleMonitor()" />
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+
+    <!-- Interval -->
+    <div class="interval-row">
+      <div class="interval-label">Check every</div>
+      <div class="interval-pills">
+        <button class="pill" onclick="setInterval_(1)">1 min</button>
+        <button class="pill active" onclick="setInterval_(5)">5 min</button>
+        <button class="pill" onclick="setInterval_(15)">15 min</button>
+        <button class="pill" onclick="setInterval_(30)">30 min</button>
+        <button class="pill" onclick="setInterval_(60)">1 hr</button>
+      </div>
+    </div>
+
+    <!-- Notification permission -->
+    <div class="notif-row" id="notifRow">
+      <div class="notif-text">
+        Browser notifications
+        <small id="notifStatus">Not yet enabled</small>
+      </div>
+      <button class="btn-notif" id="notifBtn" onclick="requestNotifPermission()">Enable alerts</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Meta -->
+    <div class="meta-row">
+      <span>Last check: <b id="lastCheck">—</b></span>
+      <span>Checks: <b id="checkCount">0</b></span>
+      <span>Changes: <b id="changeCount">0</b></span>
+    </div>
+
+    <!-- Log -->
+    <div class="log-header">
+      <div class="log-title">Activity log</div>
+      <button class="log-clear" onclick="clearLog()">Clear</button>
+    </div>
+    <div class="log" id="log">
+      <div class="log-entry">
+        <span class="log-time">--:--:--</span>
+        <span class="log-msg ok">Waiting to start...</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Monitors <a href="https://scripts.mit.edu/~mitoc/wall/" target="_blank">scripts.mit.edu/~mitoc/wall/</a><br>
+    Changes are detected by comparing page content hashes.<br>
+    Keep this tab open for monitoring to work.
+  </div>
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  const TARGET_URL = 'https://scripts.mit.edu/~mitoc/wall/';
+
+  // Multiple CORS proxies tried in order until one works
+  const PROXIES = [
+    async (url) => {
+      // allorigins — good Safari support
+      const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}&timestamp=${Date.now()}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`allorigins HTTP ${r.status}`);
+      const d = await r.json();
+      if (!d.contents) throw new Error('allorigins empty');
+      return d.contents;
+    },
+    async (url) => {
+      // htmldriven thingproxy — simple passthrough, works in Safari
+      const r = await fetch(`https://thingproxy.freeboard.io/fetch/${url}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`thingproxy HTTP ${r.status}`);
+      return r.text();
+    },
+    async (url) => {
+      // corsproxy.io as last resort
+      const r = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`corsproxy HTTP ${r.status}`);
+      return r.text();
+    },
+  ];
+
+  async function fetchPage() {
+    let lastErr;
+    for (const proxy of PROXIES) {
+      try {
+        const text = await proxy(TARGET_URL);
+        if (text && text.length > 100) return text;
+        throw new Error('Empty response');
+      } catch(e) {
+        lastErr = e;
+      }
+    }
+    throw new Error(`All proxies failed: ${lastErr.message}`);
+  }
+
+  let intervalMinutes = 5;
+  let timerID = null;
+  let lastHash = null;
+  let checkCount = 0;
+  let changeCount = 0;
+  let isMonitoring = false;
+
+  // ── Utils ──────────────────────────────────────────────────────────────────
+  async function hashString(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+
+  function now() {
+    return new Date().toLocaleTimeString('en-US', { hour12: false });
+  }
+
+  function addLog(msg, type = 'ok') {
+    const log = document.getElementById('log');
+    // remove "waiting" placeholder
+    const placeholder = log.querySelector('.log-msg.ok');
+    if (placeholder && placeholder.textContent === 'Waiting to start...') {
+      placeholder.closest('.log-entry').remove();
+    }
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    entry.innerHTML = `<span class="log-time">${now()}</span><span class="log-msg ${type}">${msg}</span>`;
+    log.prepend(entry);
+    // Keep log to 50 entries
+    while (log.children.length > 50) log.lastChild.remove();
+  }
+
+  // ── Check ──────────────────────────────────────────────────────────────────
+  async function checkPage() {
+    addLog('Fetching page...', 'ok');
+    try {
+      const content = await fetchPage();
+
+      // Strip dynamic bits: timestamps, session tokens
+      const cleaned = content
+        .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^"']*/g, 'DATETIME')
+        .replace(/cache-bust=\d+/g, '')
+        .replace(/\?[0-9]+/g, '');
+
+      const hash = await hashString(cleaned);
+      checkCount++;
+      document.getElementById('checkCount').textContent = checkCount;
+      document.getElementById('lastCheck').textContent = now();
+
+      if (lastHash === null) {
+        lastHash = hash;
+        addLog('Baseline recorded. Watching for changes...', 'info');
+      } else if (hash !== lastHash) {
+        lastHash = hash;
+        changeCount++;
+        document.getElementById('changeCount').textContent = changeCount;
+        addLog('⚡ CHANGE DETECTED on wall page!', 'changed');
+        onChangeDetected();
+      } else {
+        addLog('No change detected.', 'ok');
+      }
+    } catch (err) {
+      addLog(`Error: ${err.message}`, 'error');
+    }
+  }
+
+  // ── On Change ─────────────────────────────────────────────────────────────
+  function onChangeDetected() {
+    // Show in-page banner
+    const banner = document.getElementById('alertBanner');
+    document.getElementById('alertMsg').textContent =
+      `Detected at ${now()}. Click to open the MITOC wall page.`;
+    banner.classList.add('visible');
+
+    // Browser notification
+    if (Notification.permission === 'granted') {
+      const n = new Notification('🧗 MITOC Wall Changed!', {
+        body: `The wall page was updated at ${now()}. Check it out!`,
+        icon: 'https://scripts.mit.edu/favicon.ico',
+      });
+      n.onclick = () => { window.open(TARGET_URL, '_blank'); n.close(); };
+    }
+
+    // Tab title flash
+    let flash = true;
+    const origTitle = document.title;
+    const flashTimer = setInterval(() => {
+      document.title = flash ? '🧗 WALL CHANGED!' : origTitle;
+      flash = !flash;
+    }, 800);
+    setTimeout(() => { clearInterval(flashTimer); document.title = origTitle; }, 15000);
+  }
+
+  function dismissAlert() {
+    document.getElementById('alertBanner').classList.remove('visible');
+    window.open(TARGET_URL, '_blank');
+  }
+
+  // ── Toggle ─────────────────────────────────────────────────────────────────
+  function toggleMonitor() {
+    isMonitoring = document.getElementById('monitorToggle').checked;
+    const dot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const card = document.getElementById('mainCard');
+
+    if (isMonitoring) {
+      dot.className = 'dot active';
+      statusText.textContent = `Checking every ${intervalMinutes} min`;
+      card.classList.add('scanning');
+      lastHash = null; // re-baseline on start
+      checkPage();
+      timerID = setInterval(checkPage, intervalMinutes * 60 * 1000);
+      addLog(`Monitoring started (every ${intervalMinutes} min)`, 'info');
+    } else {
+      clearInterval(timerID);
+      timerID = null;
+      dot.className = 'dot';
+      statusText.textContent = 'Idle';
+      card.classList.remove('scanning');
+      addLog('Monitoring paused.', 'ok');
+    }
+  }
+
+  // ── Interval ───────────────────────────────────────────────────────────────
+  function setInterval_(mins) {
+    intervalMinutes = mins;
+    document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    event.target.classList.add('active');
+    if (isMonitoring) {
+      clearInterval(timerID);
+      timerID = setInterval(checkPage, intervalMinutes * 60 * 1000);
+      document.getElementById('statusText').textContent = `Checking every ${intervalMinutes} min`;
+      addLog(`Interval updated to ${intervalMinutes} min`, 'info');
+    }
+  }
+
+  // ── Notifications ──────────────────────────────────────────────────────────
+  function updateNotifUI() {
+    const perm = Notification.permission;
+    const btn = document.getElementById('notifBtn');
+    const status = document.getElementById('notifStatus');
+    if (perm === 'granted') {
+      status.textContent = '✓ Enabled';
+      btn.textContent = 'Enabled ✓';
+      btn.disabled = true;
+    } else if (perm === 'denied') {
+      status.textContent = '✗ Blocked in browser settings';
+      btn.textContent = 'Blocked';
+      btn.disabled = true;
+    } else {
+      status.textContent = 'Not yet enabled';
+      btn.textContent = 'Enable alerts';
+      btn.disabled = false;
+    }
+  }
+
+  async function requestNotifPermission() {
+    if (!('Notification' in window)) {
+      addLog('This browser does not support notifications.', 'error');
+      return;
+    }
+    if (location.protocol === 'file:') {
+      document.getElementById('notifStatus').textContent = '⚠ Must be hosted on https://';
+      document.getElementById('notifBtn').textContent = 'Needs https';
+      document.getElementById('notifBtn').disabled = true;
+      addLog('Notifications need https — host the file online (e.g. GitHub Pages).', 'error');
+      return;
+    }
+    const perm = await Notification.requestPermission();
+    updateNotifUI();
+    if (perm === 'granted') {
+      addLog('Push notifications enabled!', 'info');
+      new Notification('MITOC Wall Monitor', { body: "You'll be notified when the wall page changes!" });
+    } else {
+      addLog('Notification permission denied — check browser settings.', 'error');
+    }
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  updateNotifUI();
+  // Restore state from sessionStorage
+  const saved = sessionStorage.getItem('mitoc_hash');
+  if (saved) lastHash = saved;
+</script>
+</body>
+</html>
