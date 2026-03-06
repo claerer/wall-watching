@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Wall Watching — MITOC</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --deep:    #050d1a;
+    --navy:    #081628;
+    --ocean:   #0a2240;
+    --surface: #0d2a4a;
+    --border:  #123558;
+    --sonar:   #00e5ff;
+    --sonar2:  #00ffb3;
+    --amber:   #ffb347;
+    --warn:    #ff6b4a;
+    --text:    #e8f6ff;
+    --muted:   #7aaec8;
+    --dim:     #2a5878;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--deep);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 60px;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* ── Ocean depth background ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 100%, rgba(0,80,140,0.35) 0%, transparent 70%),
+      radial-gradient(ellipse 50% 40% at 20% 80%, rgba(0,50,100,0.2) 0%, transparent 60%),
+      linear-gradient(180deg, #050d1a 0%, #071525 40%, #081e36 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Sonar rings ── */
+  .sonar-rings {
+    position: fixed;
+    bottom: -120px;
+    right: -80px;
+    width: 500px;
+    height: 500px;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.08;
+  }
+
+  .sonar-rings circle {
+    fill: none;
+    stroke: var(--sonar);
+    stroke-width: 1;
+  }
+
+  /* ── Animated sonar sweep (only when active) ── */
+  .sonar-sweep {
+    position: fixed;
+    bottom: -120px;
+    right: -80px;
+    width: 500px;
+    height: 500px;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0;
+    transition: opacity 0.5s;
+  }
+
+  .sonar-sweep.active { opacity: 1; }
+
+  .sonar-sweep .sweep {
+    transform-origin: 250px 370px;
+    animation: sweep 4s linear infinite;
+    animation-play-state: paused;
+  }
+
+  .sonar-sweep.active .sweep {
+    animation-play-state: running;
+  }
+
+  @keyframes sweep {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  /* ── Bubbles ── */
+  .bubbles {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  .bubble {
+    position: absolute;
+    bottom: -20px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 229, 255, 0.15);
+    animation: rise linear infinite;
+    opacity: 0;
+  }
+
+  @keyframes rise {
+    0%   { transform: translateY(0) translateX(0); opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 0.3; }
+    100% { transform: translateY(-100vh) translateX(20px); opacity: 0; }
+  }
+
+  /* ── Container ── */
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 620px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    padding: 20px 0 8px;
+  }
+
+  .whale-svg {
+    width: 72px;
+    height: 72px;
+    margin-bottom: 4px;
+    filter: drop-shadow(0 0 12px rgba(0,229,255,0.4));
+    animation: float 5s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(-2deg); }
+    50%       { transform: translateY(-8px) rotate(2deg); }
+  }
+
+  .header-tag {
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: var(--sonar);
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(36px, 8vw, 56px);
+    font-weight: 900;
+    line-height: 0.95;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--sonar);
+  }
+
+  .subtitle {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    margin-top: 4px;
+  }
+
+  /* ── Depth gauge decorative bar ── */
+  .depth-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .depth-bar::before, .depth-bar::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+  }
+
+  /* ── Card ── */
+  .card {
+    background: rgba(8, 22, 40, 0.8);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    backdrop-filter: blur(8px);
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Corner brackets */
+  .card::before, .card::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-color: var(--sonar);
+    border-style: solid;
+    opacity: 0.3;
+  }
+  .card::before { top: 8px; left: 8px; border-width: 1px 0 0 1px; }
+  .card::after  { bottom: 8px; right: 8px; border-width: 0 1px 1px 0; }
+
+  .card.scanning {
+    border-color: rgba(0, 229, 255, 0.3);
+    box-shadow: 0 0 40px rgba(0,229,255,0.05), inset 0 0 40px rgba(0,229,255,0.02);
+  }
+
+  /* ── Status row ── */
+  .status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .status-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+  }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+  }
+
+  .ping {
+    position: relative;
+    width: 10px;
+    height: 10px;
+  }
+
+  .ping-core {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.4s;
+  }
+
+  .ping-ring {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 1px solid var(--muted);
+    opacity: 0;
+    transition: border-color 0.4s;
+  }
+
+  .ping.active .ping-core { background: var(--sonar); box-shadow: 0 0 6px var(--sonar); }
+  .ping.active .ping-ring  { border-color: var(--sonar); animation: pingout 2s ease-out infinite; }
+  .ping.changed .ping-core { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+
+  @keyframes pingout {
+    0%   { transform: scale(1); opacity: 0.6; }
+    100% { transform: scale(2.5); opacity: 0; }
+  }
+
+  /* ── Toggle ── */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .toggle-label {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.4;
+  }
+
+  .toggle-label small {
+    display: block;
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 2px;
+    letter-spacing: 0.05em;
+  }
+
+  .toggle {
+    position: relative;
+    width: 52px;
+    height: 26px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .toggle input { opacity: 0; width: 0; height: 0; }
+
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    background: var(--ocean);
+    border-radius: 26px;
+    border: 1px solid var(--dim);
+    transition: all 0.3s;
+  }
+
+  .toggle-thumb {
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 18px; height: 18px;
+    background: var(--muted);
+    border-radius: 50%;
+    transition: all 0.3s;
+  }
+
+  .toggle input:checked ~ .toggle-track {
+    background: rgba(0,229,255,0.08);
+    border-color: var(--sonar);
+  }
+
+  .toggle input:checked ~ .toggle-thumb {
+    transform: translateX(26px);
+    background: var(--sonar);
+    box-shadow: 0 0 10px var(--sonar);
+  }
+
+  /* ── Interval pills ── */
+  .interval-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .interval-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .interval-pills {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .pill {
+    padding: 4px 9px;
+    border-radius: 2px;
+    font-size: 10px;
+    font-family: 'Space Mono', monospace;
+    background: transparent;
+    border: 1px solid var(--dim);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.05em;
+  }
+
+  .pill:hover  { border-color: var(--sonar); color: var(--sonar); }
+  .pill.active { background: rgba(0,229,255,0.08); border-color: var(--sonar); color: var(--sonar); }
+
+  /* ── Notification row ── */
+  .notif-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: rgba(0, 229, 255, 0.03);
+    border: 1px dashed rgba(0,229,255,0.15);
+    border-radius: 3px;
+  }
+
+  .notif-text {
+    font-size: 11px;
+    color: var(--sonar2);
+  }
+  .notif-text small {
+    display: block;
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .btn-notif {
+    background: rgba(0,229,255,0.06);
+    border: 1px solid rgba(0,229,255,0.3);
+    color: var(--sonar);
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    padding: 6px 12px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    letter-spacing: 0.05em;
+  }
+
+  .btn-notif:hover    { background: rgba(0,229,255,0.12); }
+  .btn-notif:disabled { opacity: 0.35; cursor: default; }
+
+  /* ── Divider ── */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+  }
+
+  /* ── Meta row ── */
+  .meta-row {
+    display: flex;
+    gap: 18px;
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    flex-wrap: wrap;
+  }
+  .meta-row b { color: var(--text); font-weight: 400; }
+
+  /* ── Log ── */
+  .log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .log-title {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+  }
+
+  .log-clear {
+    font-size: 9px;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: 'Space Mono', monospace;
+    text-decoration: underline;
+  }
+  .log-clear:hover { color: var(--warn); }
+
+  .log {
+    display: flex;
+    flex-direction: column;
+    max-height: 200px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--dim) transparent;
+  }
+
+  .log-entry {
+    display: flex;
+    gap: 10px;
+    font-size: 10px;
+    line-height: 1.6;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    animation: fadein 0.3s ease;
+  }
+
+  @keyframes fadein {
+    from { opacity: 0; transform: translateY(-3px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .log-time { color: var(--muted); white-space: nowrap; flex-shrink: 0; font-size: 9px; padding-top: 1px; }
+  .log-msg  { color: var(--text); }
+  .log-msg.ok      { color: var(--muted); }
+  .log-msg.changed { color: var(--sonar); }
+  .log-msg.error   { color: var(--warn); }
+  .log-msg.info    { color: var(--sonar2); }
+
+  /* ── Alert banner ── */
+  .alert-banner {
+    display: none;
+    background: rgba(255, 107, 74, 0.08);
+    border: 1px solid var(--warn);
+    border-radius: 4px;
+    padding: 16px 20px;
+    gap: 14px;
+    align-items: flex-start;
+    animation: fadein 0.4s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .alert-banner::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--warn), transparent);
+    animation: scan 2s linear infinite;
+  }
+
+  @keyframes scan {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
+  }
+
+  .alert-banner.visible { display: flex; }
+  .alert-icon { font-size: 22px; flex-shrink: 0; }
+  .alert-body { flex: 1; }
+
+  .alert-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--warn);
+    margin-bottom: 4px;
+  }
+
+  .alert-msg  { font-size: 10px; color: var(--text); }
+
+  .alert-dismiss {
+    background: none;
+    border: 1px solid var(--warn);
+    color: var(--warn);
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    padding: 5px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+    margin-top: 10px;
+    letter-spacing: 0.05em;
+  }
+  .alert-dismiss:hover { background: rgba(255,107,74,0.12); }
+
+  /* ── Footer ── */
+  .footer {
+    font-size: 9px;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.8;
+    letter-spacing: 0.05em;
+  }
+  .footer a { color: var(--sonar); text-decoration: none; opacity: 0.7; }
+  .footer a:hover { opacity: 1; text-decoration: underline; }
+
+  /* ── Scanline overlay ── */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.04) 2px,
+      rgba(0,0,0,0.04) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+</style>
+</head>
+<body>
+
+<!-- Sonar rings -->
+<svg class="sonar-rings" viewBox="0 0 500 500">
+  <circle cx="250" cy="370" r="60"/>
+  <circle cx="250" cy="370" r="120"/>
+  <circle cx="250" cy="370" r="180"/>
+  <circle cx="250" cy="370" r="240"/>
+  <circle cx="250" cy="370" r="300"/>
+</svg>
+
+<!-- Sonar sweep -->
+<svg class="sonar-sweep" id="sonarSweep" viewBox="0 0 500 500">
+  <defs>
+    <radialGradient id="sweepGrad" cx="250" cy="370" r="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g class="sweep">
+    <path d="M250,370 L550,20 A300,300 0 0,1 550,720 Z" fill="url(#sweepGrad)" opacity="0.4"/>
+    <line x1="250" y1="370" x2="550" y2="20" stroke="#00e5ff" stroke-width="1" opacity="0.6"/>
+  </g>
+</svg>
+
+<!-- Bubbles -->
+<div class="bubbles" id="bubbles"></div>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <!-- Whale SVG -->
+    <svg class="whale-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Body -->
+      <ellipse cx="45" cy="54" rx="34" ry="20" fill="#0a4a7a" stroke="#00e5ff" stroke-width="1.2"/>
+      <!-- Head bulge -->
+      <ellipse cx="74" cy="52" rx="14" ry="12" fill="#0a4a7a" stroke="#00e5ff" stroke-width="1.2"/>
+      <!-- Tail -->
+      <path d="M12 54 Q4 40 8 32 Q10 44 16 48Z" fill="#0a4a7a" stroke="#00e5ff" stroke-width="1.2"/>
+      <path d="M12 54 Q2 60 6 70 Q10 62 16 60Z" fill="#0a4a7a" stroke="#00e5ff" stroke-width="1.2"/>
+      <!-- Fin -->
+      <path d="M50 54 Q54 36 64 38 Q58 46 55 54Z" fill="#0d5e9a" stroke="#00e5ff" stroke-width="1"/>
+      <!-- Eye -->
+      <circle cx="76" cy="49" r="2.5" fill="#00e5ff" opacity="0.9"/>
+      <circle cx="77" cy="48.5" r="0.8" fill="white"/>
+      <!-- Blowhole spray -->
+      <path d="M68 42 Q70 34 68 28" stroke="#00e5ff" stroke-width="1" stroke-linecap="round" opacity="0.6"/>
+      <path d="M70 41 Q74 32 73 25" stroke="#00e5ff" stroke-width="1.2" stroke-linecap="round" opacity="0.8"/>
+      <path d="M72 42 Q77 35 78 30" stroke="#00e5ff" stroke-width="1" stroke-linecap="round" opacity="0.6"/>
+      <!-- Belly highlight -->
+      <ellipse cx="48" cy="62" rx="22" ry="7" fill="#0d5e9a" opacity="0.5"/>
+    </svg>
+
+    <div class="header-tag">MIT Outing Club · Climbing Wall</div>
+    <h1>Wall<br><em>Watching</em></h1>
+    <div class="subtitle">Monitoring scripts.mit.edu/~mitoc/wall/ for changes</div>
+  </div>
+
+  <div class="depth-bar">depth 0x0000 — signal locked</div>
+
+  <!-- Alert banner -->
+  <div class="alert-banner" id="alertBanner">
+    <div class="alert-icon">🐳</div>
+    <div class="alert-body">
+      <div class="alert-title">The wall has surfaced!</div>
+      <div class="alert-msg" id="alertMsg">A change was detected on the MITOC wall page.</div>
+      <button class="alert-dismiss" onclick="dismissAlert()">Open wall page ↗</button>
+    </div>
+  </div>
+
+  <!-- Main card -->
+  <div class="card" id="mainCard">
+
+    <!-- Status -->
+    <div class="status-row">
+      <div class="status-label">Sonar status</div>
+      <div class="status-badge">
+        <div class="ping" id="statusDot">
+          <div class="ping-core"></div>
+          <div class="ping-ring"></div>
+        </div>
+        <span id="statusText">Awaiting dive</span>
+      </div>
+    </div>
+
+    <!-- Toggle -->
+    <div class="toggle-row">
+      <div class="toggle-label">
+        Begin watching
+        <small>Pings the wall on the interval below</small>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="monitorToggle" onchange="toggleMonitor()" />
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+
+    <!-- Interval -->
+    <div class="interval-row">
+      <div class="interval-label">Ping every</div>
+      <div class="interval-pills">
+        <button class="pill" onclick="setInterval_(1)">1 min</button>
+        <button class="pill active" onclick="setInterval_(5)">5 min</button>
+        <button class="pill" onclick="setInterval_(15)">15 min</button>
+        <button class="pill" onclick="setInterval_(30)">30 min</button>
+        <button class="pill" onclick="setInterval_(60)">1 hr</button>
+      </div>
+    </div>
+
+    <!-- Notifications -->
+    <div class="notif-row" id="notifRow">
+      <div class="notif-text">
+        Surface alerts
+        <small id="notifStatus">Not yet enabled</small>
+      </div>
+      <button class="btn-notif" id="notifBtn" onclick="requestNotifPermission()">Enable signals</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Meta -->
+    <div class="meta-row">
+      <span>Last ping: <b id="lastCheck">—</b></span>
+      <span>Dives: <b id="checkCount">0</b></span>
+      <span>Surfaces: <b id="changeCount">0</b></span>
+    </div>
+
+    <!-- Log -->
+    <div class="log-header">
+      <div class="log-title">Sonar log</div>
+      <button class="log-clear" onclick="clearLog()">Purge</button>
+    </div>
+    <div class="log" id="log">
+      <div class="log-entry">
+        <span class="log-time">--:--:--</span>
+        <span class="log-msg ok">Awaiting dive order...</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    Built for the MIT Outing Club climbing community<br>
+    <a href="https://scripts.mit.edu/~mitoc/wall/" target="_blank">scripts.mit.edu/~mitoc/wall/</a>
+    &nbsp;·&nbsp; Keep tab open to maintain watch
+  </div>
+
+</div>
+
+<script>
+  // ── Bubbles ────────────────────────────────────────────────────────────────
+  (function spawnBubbles() {
+    const container = document.getElementById('bubbles');
+    for (let i = 0; i < 18; i++) {
+      const b = document.createElement('div');
+      b.className = 'bubble';
+      const size = 4 + Math.random() * 10;
+      b.style.cssText = `
+        width:${size}px; height:${size}px;
+        left:${Math.random()*100}%;
+        animation-duration:${8+Math.random()*14}s;
+        animation-delay:${Math.random()*12}s;
+      `;
+      container.appendChild(b);
+    }
+  })();
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  const TARGET_URL = 'https://scripts.mit.edu/~mitoc/wall/';
+
+  const PROXIES = [
+    async (url) => {
+      const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}&timestamp=${Date.now()}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`allorigins HTTP ${r.status}`);
+      const d = await r.json();
+      if (!d.contents) throw new Error('allorigins empty');
+      return d.contents;
+    },
+    async (url) => {
+      const r = await fetch(`https://thingproxy.freeboard.io/fetch/${url}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`thingproxy HTTP ${r.status}`);
+      return r.text();
+    },
+    async (url) => {
+      const r = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`corsproxy HTTP ${r.status}`);
+      return r.text();
+    },
+  ];
+
+  async function fetchPage() {
+    let lastErr;
+    for (const proxy of PROXIES) {
+      try {
+        const text = await proxy(TARGET_URL);
+        if (text && text.length > 100) return text;
+        throw new Error('Empty response');
+      } catch(e) { lastErr = e; }
+    }
+    throw new Error(`All proxies failed: ${lastErr.message}`);
+  }
+
+  let intervalMinutes = 5;
+  let timerID = null;
+  let lastHash = null;
+  let checkCount = 0;
+  let changeCount = 0;
+  let isMonitoring = false;
+
+  async function hashString(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+
+  function now() {
+    return new Date().toLocaleTimeString('en-US', { hour12: false });
+  }
+
+  function addLog(msg, type = 'ok') {
+    const log = document.getElementById('log');
+    const placeholder = log.querySelector('.log-msg.ok');
+    if (placeholder && placeholder.textContent.includes('Awaiting')) {
+      placeholder.closest('.log-entry').remove();
+    }
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    entry.innerHTML = `<span class="log-time">${now()}</span><span class="log-msg ${type}">${msg}</span>`;
+    log.prepend(entry);
+    while (log.children.length > 50) log.lastChild.remove();
+  }
+
+  function clearLog() {
+    const log = document.getElementById('log');
+    log.innerHTML = '<div class="log-entry"><span class="log-time">--:--:--</span><span class="log-msg ok">Log purged.</span></div>';
+  }
+
+  // ── Check ──────────────────────────────────────────────────────────────────
+  async function checkPage() {
+    addLog('Pinging wall...', 'ok');
+    try {
+      const content = await fetchPage();
+      const cleaned = content
+        .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^"']*/g, 'DATETIME')
+        .replace(/cache-bust=\d+/g, '')
+        .replace(/\?[0-9]+/g, '');
+
+      const hash = await hashString(cleaned);
+      checkCount++;
+      document.getElementById('checkCount').textContent = checkCount;
+      document.getElementById('lastCheck').textContent = now();
+
+      if (lastHash === null) {
+        lastHash = hash;
+        addLog('Baseline depth recorded — watching for surfaces...', 'info');
+      } else if (hash !== lastHash) {
+        lastHash = hash;
+        changeCount++;
+        document.getElementById('changeCount').textContent = changeCount;
+        addLog('🐳 SURFACE DETECTED — wall page changed!', 'changed');
+        document.getElementById('statusDot').className = 'ping changed';
+        onChangeDetected();
+      } else {
+        addLog('All quiet in the deep.', 'ok');
+      }
+    } catch (err) {
+      addLog(`Signal lost: ${err.message}`, 'error');
+    }
+  }
+
+  function onChangeDetected() {
+    const banner = document.getElementById('alertBanner');
+    document.getElementById('alertMsg').textContent =
+      `Detected at ${now()}. The wall page has been updated — go check it!`;
+    banner.classList.add('visible');
+
+    if (Notification.permission === 'granted') {
+      const n = new Notification('🐳 Wall Watching — Surface detected!', {
+        body: `The MITOC wall page changed at ${now()}. Check it out!`,
+        icon: 'https://scripts.mit.edu/favicon.ico',
+      });
+      n.onclick = () => { window.open(TARGET_URL, '_blank'); n.close(); };
+    }
+
+    let flash = true;
+    const orig = document.title;
+    const t = setInterval(() => {
+      document.title = flash ? '🐳 WALL CHANGED!' : orig;
+      flash = !flash;
+    }, 800);
+    setTimeout(() => { clearInterval(t); document.title = orig; }, 15000);
+  }
+
+  function dismissAlert() {
+    document.getElementById('alertBanner').classList.remove('visible');
+    window.open(TARGET_URL, '_blank');
+  }
+
+  // ── Toggle ─────────────────────────────────────────────────────────────────
+  function toggleMonitor() {
+    isMonitoring = document.getElementById('monitorToggle').checked;
+    const dot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const card = document.getElementById('mainCard');
+    const sweep = document.getElementById('sonarSweep');
+
+    if (isMonitoring) {
+      dot.className = 'ping active';
+      statusText.textContent = `Watching — every ${intervalMinutes} min`;
+      card.classList.add('scanning');
+      sweep.classList.add('active');
+      lastHash = null;
+      checkPage();
+      timerID = setInterval(checkPage, intervalMinutes * 60 * 1000);
+      addLog(`Dive started — pinging every ${intervalMinutes} min`, 'info');
+    } else {
+      clearInterval(timerID);
+      timerID = null;
+      dot.className = 'ping';
+      statusText.textContent = 'Awaiting dive';
+      card.classList.remove('scanning');
+      sweep.classList.remove('active');
+      addLog('Surfaced. Watch paused.', 'ok');
+    }
+  }
+
+  // ── Interval ───────────────────────────────────────────────────────────────
+  function setInterval_(mins) {
+    intervalMinutes = mins;
+    document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    event.target.classList.add('active');
+    if (isMonitoring) {
+      clearInterval(timerID);
+      timerID = setInterval(checkPage, intervalMinutes * 60 * 1000);
+      document.getElementById('statusText').textContent = `Watching — every ${intervalMinutes} min`;
+      addLog(`Interval updated to ${intervalMinutes} min`, 'info');
+    }
+  }
+
+  // ── Notifications ──────────────────────────────────────────────────────────
+  function updateNotifUI() {
+    const perm = Notification.permission;
+    const btn = document.getElementById('notifBtn');
+    const status = document.getElementById('notifStatus');
+    if (perm === 'granted') {
+      status.textContent = '✓ Signals enabled';
+      btn.textContent = 'Active ✓';
+      btn.disabled = true;
+    } else if (perm === 'denied') {
+      status.textContent = '✗ Blocked in browser';
+      btn.textContent = 'Blocked';
+      btn.disabled = true;
+    } else {
+      status.textContent = 'Not yet enabled';
+      btn.textContent = 'Enable signals';
+      btn.disabled = false;
+    }
+  }
+
+  async function requestNotifPermission() {
+    if (!('Notification' in window)) {
+      addLog('Browser does not support notifications.', 'error');
+      return;
+    }
+    if (location.protocol === 'file:') {
+      document.getElementById('notifStatus').textContent = '⚠ Needs https://';
+      document.getElementById('notifBtn').textContent = 'Needs https';
+      document.getElementById('notifBtn').disabled = true;
+      addLog('Signals need https — host on GitHub Pages first.', 'error');
+      return;
+    }
+    const perm = await Notification.requestPermission();
+    updateNotifUI();
+    if (perm === 'granted') {
+      addLog('Surface signals enabled!', 'info');
+      new Notification('🐳 Wall Watching', { body: "You'll be signaled when the wall page changes!" });
+    } else {
+      addLog('Signal permission denied — check browser settings.', 'error');
+    }
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  updateNotifUI();
+  const saved = sessionStorage.getItem('mitoc_hash');
+  if (saved) lastHash = saved;
+</script>
+</body>
+</html>
